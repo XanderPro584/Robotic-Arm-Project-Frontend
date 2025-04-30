@@ -2,11 +2,10 @@ import React from 'react';
 
 const GoRight = () => {
     const goRight = () => {
-        fetch('/api/left')
+        fetch('/api/right')
             .then(res => res.json())
             .then(data => {
                 console.log(data);
-                alert(data.status || data.error);
             });
     }
 
