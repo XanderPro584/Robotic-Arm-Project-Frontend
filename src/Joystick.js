@@ -4,31 +4,24 @@ import axios from 'axios';
 function Joystick() {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const containerRef = useRef(null);
-  const joystickRef = useRef(null);
   const isDragging = useRef(false);
 
-  const handleMouseDown = () => {
-    isDragging.current = true;
+  const sendPositionToServer = (x, y) => {
+    axios.post('/joystick', { x, y })
+      .then(response => console.log('Server response:', response.data))
+      .catch(error => console.error('Error:', error));
   };
 
-  const handleMouseUp = () => {
-    isDragging.current = false;
-    // Optionally, reset joystick position here
-    setPosition({ x: 0, y: 0 });
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isDragging.current) return;
-
+  const getRelativePosition = (clientX, clientY) => {
     const container = containerRef.current.getBoundingClientRect();
     const centerX = container.width / 2;
     const centerY = container.height / 2;
 
-    const x = e.clientX - container.left - centerX;
-    const y = e.clientY - container.top - centerY;
+    const x = clientX - container.left - centerX;
+    const y = clientY - container.top - centerY;
 
     const distance = Math.sqrt(x * x + y * y);
-    const maxDistance = centerX; // limit movement within container
+    const maxDistance = centerX;
 
     let newX = x;
     let newY = y;
@@ -39,28 +32,31 @@ function Joystick() {
       newY = Math.sin(angle) * maxDistance;
     }
 
-    setPosition({ x: newX, y: newY });
-
-    // Send position to Flask
-    sendPositionToServer(newX, newY);
+    return { x: newX, y: newY };
   };
 
-  const sendPositionToServer = (x, y) => {
-    axios.post('/joystick', { x, y })
-      .then(response => {
-        console.log('Server response:', response.data);
-      })
-      .catch(error => {
-        console.error('Error sending position:', error);
-      });
+  const handleStart = (clientX, clientY) => {
+    isDragging.current = true;
+    const newPos = getRelativePosition(clientX, clientY);
+    setPosition(newPos);
+    sendPositionToServer(newPos.x, newPos.y);
+  };
+
+  const handleMove = (clientX, clientY) => {
+    if (!isDragging.current) return;
+    const newPos = getRelativePosition(clientX, clientY);
+    setPosition(newPos);
+    sendPositionToServer(newPos.x, newPos.y);
+  };
+
+  const handleEnd = () => {
+    isDragging.current = false;
+    setPosition({ x: 0, y: 0 }); // Optional reset
   };
 
   return (
     <div
       ref={containerRef}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
       style={{
         width: 300,
         height: 300,
@@ -68,12 +64,26 @@ function Joystick() {
         borderRadius: '50%',
         position: 'relative',
         margin: '50px auto',
+        touchAction: 'none', // Prevent default scroll/pinch behavior
         userSelect: 'none',
       }}
+      onMouseMove={(e) => handleMove(e.clientX, e.clientY)}
+      onMouseUp={handleEnd}
+      onMouseLeave={handleEnd}
+      onTouchMove={(e) => {
+        if (e.touches.length > 0) {
+          handleMove(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }}
+      onTouchEnd={handleEnd}
     >
       <div
-        ref={joystickRef}
-        onMouseDown={handleMouseDown}
+        onMouseDown={(e) => handleStart(e.clientX, e.clientY)}
+        onTouchStart={(e) => {
+          if (e.touches.length > 0) {
+            handleStart(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }}
         style={{
           width: 50,
           height: 50,
@@ -83,6 +93,7 @@ function Joystick() {
           top: `calc(50% + ${position.y}px - 25px)`,
           left: `calc(50% + ${position.x}px - 25px)`,
           cursor: 'grab',
+          touchAction: 'none',
         }}
       />
     </div>
